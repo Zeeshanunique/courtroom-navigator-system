@@ -1,18 +1,24 @@
 
-import { useEffect } from "react";
+import { SignIn } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
-import { LoginForm } from "@/components/auth/LoginForm";
 
 export default function Auth() {
   const navigate = useNavigate();
-  
-  useEffect(() => {
-    // Check if user is already authenticated
-    const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
-    if (isAuthenticated) {
-      navigate("/dashboard");
-    }
-  }, [navigate]);
 
-  return <LoginForm />;
+  return (
+    <div className="flex justify-center items-center min-h-screen bg-muted/30 p-4">
+      <SignIn 
+        appearance={{
+          elements: {
+            rootBox: "w-full max-w-md",
+            card: "shadow-lg bg-background",
+          }
+        }}
+        routing="path"
+        path="/"
+        redirectUrl="/dashboard"
+        signUpUrl="/sign-up"
+      />
+    </div>
+  );
 }

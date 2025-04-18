@@ -3,7 +3,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { SignedIn, SignedOut } from "@clerk/clerk-react";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -21,12 +22,56 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Auth />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/cases" element={<CaseManagement />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/documents" element={<Documents />} />
-          <Route path="*" element={<NotFound />} />
+          <Route
+            path="/"
+            element={
+              <SignedIn>
+                <Navigate to="/dashboard" replace />
+              </SignedIn>
+            }
+          />
+          <Route path="/sign-in" element={<Auth />} />
+          <Route path="/sign-up" element={<Auth />} />
+          <Route
+            path="/dashboard"
+            element={
+              <SignedIn>
+                <Dashboard />
+              </SignedIn>
+            }
+          />
+          <Route
+            path="/cases"
+            element={
+              <SignedIn>
+                <CaseManagement />
+              </SignedIn>
+            }
+          />
+          <Route
+            path="/calendar"
+            element={
+              <SignedIn>
+                <Calendar />
+              </SignedIn>
+            }
+          />
+          <Route
+            path="/documents"
+            element={
+              <SignedIn>
+                <Documents />
+              </SignedIn>
+            }
+          />
+          <Route
+            path="*"
+            element={
+              <SignedIn>
+                <NotFound />
+              </SignedIn>
+            }
+          />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
