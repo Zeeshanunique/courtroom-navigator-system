@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -7,14 +6,24 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
 export default function Auth() {
-  const [activeTab, setActiveTab] = useState<string>("signin");
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<string>(location.pathname === "/register" ? "signup" : "signin");
   const navigate = useNavigate();
   const { signIn, signUp, isLoading } = useAuth();
+
+  // Update URL when tab changes
+  useEffect(() => {
+    if (activeTab === "signin" && location.pathname !== "/login") {
+      navigate("/login", { replace: true });
+    } else if (activeTab === "signup" && location.pathname !== "/register") {
+      navigate("/register", { replace: true });
+    }
+  }, [activeTab, navigate, location]);
 
   // Sign In form state
   const [signInEmail, setSignInEmail] = useState("");

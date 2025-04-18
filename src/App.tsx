@@ -13,6 +13,7 @@ import Documents from "./pages/Documents";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import LandingPage from "./pages/LandingPage";
 
 // Import Firebase initialization - explicitly import all needed services
 import { app, auth, db, storage, firebaseError } from "@/integrations/firebase/client";
@@ -32,6 +33,25 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   
   if (!user) {
     return <Navigate to="/" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
+// Wrap routes that should be inaccessible when authenticated
+const PublicOnlyRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+  
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
   }
   
   return <>{children}</>;
@@ -174,16 +194,26 @@ const AppRoutes = () => (
     <Route
       path="/"
       element={
-        <Auth />
+        <PublicOnlyRoute>
+          <LandingPage />
+        </PublicOnlyRoute>
       }
     />
     <Route 
-      path="/sign-in" 
-      element={<Auth />} 
+      path="/login" 
+      element={
+        <PublicOnlyRoute>
+          <Auth />
+        </PublicOnlyRoute>
+      } 
     />
     <Route 
-      path="/sign-up" 
-      element={<Auth />} 
+      path="/register" 
+      element={
+        <PublicOnlyRoute>
+          <Auth />
+        </PublicOnlyRoute>
+      } 
     />
     <Route
       path="/dashboard"
@@ -235,11 +265,7 @@ const AppRoutes = () => (
     />
     <Route
       path="*"
-      element={
-        <ProtectedRoute>
-          <NotFound />
-        </ProtectedRoute>
-      }
+      element={<NotFound />}
     />
   </Routes>
 );
