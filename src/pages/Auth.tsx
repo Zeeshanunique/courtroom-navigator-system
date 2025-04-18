@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 
 export default function Auth() {
   const [activeTab, setActiveTab] = useState<string>("signin");
@@ -17,28 +19,53 @@ export default function Auth() {
   // Sign In form state
   const [signInEmail, setSignInEmail] = useState("");
   const [signInPassword, setSignInPassword] = useState("");
-
+  
   // Sign Up form state
   const [signUpEmail, setSignUpEmail] = useState("");
   const [signUpPassword, setSignUpPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<"Judge" | "Lawyer" | "Clerk" | "Public">("Public");
+  
+  // Error handling
+  const [error, setError] = useState<string | null>(null);
 
   // Form handling
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    await signIn(signInEmail, signInPassword);
+    setError(null);
+    
+    try {
+      const result = await signIn(signInEmail, signInPassword);
+      if (result.error) {
+        setError(result.error.message);
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+      console.error("Sign in error:", err);
+    }
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    await signUp(signUpEmail, signUpPassword, { 
-      first_name: firstName, 
-      last_name: lastName, 
-      role 
-    });
-    setActiveTab("signin");
+    setError(null);
+    
+    try {
+      const result = await signUp(signUpEmail, signUpPassword, { 
+        first_name: firstName, 
+        last_name: lastName, 
+        role 
+      });
+      
+      if (result.error) {
+        setError(result.error.message);
+      } else {
+        setActiveTab("signin");
+      }
+    } catch (err) {
+      setError("An unexpected error occurred during registration. Please try again.");
+      console.error("Sign up error:", err);
+    }
   };
 
   return (
@@ -53,7 +80,17 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue={activeTab} onValueChange={setActiveTab} className="w-full">
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
+          <Tabs defaultValue={activeTab} onValueChange={(value) => {
+            setActiveTab(value);
+            setError(null);
+          }} className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-4">
               <TabsTrigger value="signin">Sign In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
