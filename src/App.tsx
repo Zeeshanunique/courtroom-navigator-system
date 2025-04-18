@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -13,7 +13,85 @@ import Calendar from "./pages/Calendar";
 import Documents from "./pages/Documents";
 import NotFound from "./pages/NotFound";
 
+// Wrap routes that require authentication
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Navigate to="/" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
 const queryClient = new QueryClient();
+
+const AppRoutes = () => (
+  <Routes>
+    <Route
+      path="/"
+      element={
+        <Auth />
+      }
+    />
+    <Route 
+      path="/sign-in" 
+      element={<Auth />} 
+    />
+    <Route 
+      path="/sign-up" 
+      element={<Auth />} 
+    />
+    <Route
+      path="/dashboard"
+      element={
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/cases"
+      element={
+        <ProtectedRoute>
+          <CaseManagement />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/calendar"
+      element={
+        <ProtectedRoute>
+          <Calendar />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/documents"
+      element={
+        <ProtectedRoute>
+          <Documents />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="*"
+      element={
+        <ProtectedRoute>
+          <NotFound />
+        </ProtectedRoute>
+      }
+    />
+  </Routes>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -21,94 +99,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <>
-                <SignedIn>
-                  <Navigate to="/dashboard" replace />
-                </SignedIn>
-                <SignedOut>
-                  <Auth />
-                </SignedOut>
-              </>
-            }
-          />
-          <Route 
-            path="/sign-in" 
-            element={<Auth />} 
-          />
-          <Route 
-            path="/sign-up" 
-            element={<Auth />} 
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <>
-                <SignedIn>
-                  <Dashboard />
-                </SignedIn>
-                <SignedOut>
-                  <Navigate to="/" replace />
-                </SignedOut>
-              </>
-            }
-          />
-          <Route
-            path="/cases"
-            element={
-              <>
-                <SignedIn>
-                  <CaseManagement />
-                </SignedIn>
-                <SignedOut>
-                  <Navigate to="/" replace />
-                </SignedOut>
-              </>
-            }
-          />
-          <Route
-            path="/calendar"
-            element={
-              <>
-                <SignedIn>
-                  <Calendar />
-                </SignedIn>
-                <SignedOut>
-                  <Navigate to="/" replace />
-                </SignedOut>
-              </>
-            }
-          />
-          <Route
-            path="/documents"
-            element={
-              <>
-                <SignedIn>
-                  <Documents />
-                </SignedIn>
-                <SignedOut>
-                  <Navigate to="/" replace />
-                </SignedOut>
-              </>
-            }
-          />
-          <Route
-            path="*"
-            element={
-              <>
-                <SignedIn>
-                  <NotFound />
-                </SignedIn>
-                <SignedOut>
-                  <Navigate to="/" replace />
-                </SignedOut>
-              </>
-            }
-          />
-        </Routes>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
