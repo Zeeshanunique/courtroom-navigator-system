@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dashboard } from "@/components/layout/Dashboard";
 import {
   Table,
@@ -35,7 +34,19 @@ import {
   Star, 
   Trash2, 
   Upload, 
-  UserPlus 
+  UserPlus,
+  Plus,
+  Image as ImageIcon,
+  FileIcon,
+  Table2,
+  Terminal,
+  Package,
+  Music,
+  Video,
+  Trash,
+  Edit,
+  UploadCloud,
+  Loader2
 } from "lucide-react";
 import {
   Card,
@@ -57,22 +68,67 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useUserRole } from "@/hooks/useUserRole";
+import { db } from "@/integrations/firebase/client";
+import { collection, query, orderBy, getDocs } from "firebase/firestore";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock document data
-const documents = [
-  { id: "DOC-1234", name: "Initial Complaint - Smith vs. Albany Corp", type: "pdf", caseId: "CIV-2023-45", size: "1.2 MB", uploadedBy: "Sarah Johnson", uploadDate: "2023-04-12", category: "Pleading" },
-  { id: "DOC-1235", name: "Response to Complaint - Albany Corp", type: "pdf", caseId: "CIV-2023-45", size: "0.9 MB", uploadedBy: "Michael Williams", uploadDate: "2023-04-28", category: "Pleading" },
-  { id: "DOC-1236", name: "Evidence Exhibit A - Contract Copy", type: "pdf", caseId: "CIV-2023-45", size: "3.5 MB", uploadedBy: "Sarah Johnson", uploadDate: "2023-05-02", category: "Evidence" },
-  { id: "DOC-1237", name: "Criminal Complaint - State vs. Johnson", type: "pdf", caseId: "CRM-2023-28", size: "0.8 MB", uploadedBy: "Lisa Montgomery", uploadDate: "2023-04-10", category: "Complaint" },
-  { id: "DOC-1238", name: "Police Report - Johnson Case", type: "pdf", caseId: "CRM-2023-28", size: "1.7 MB", uploadedBy: "Lisa Montgomery", uploadDate: "2023-04-10", category: "Report" },
-  { id: "DOC-1239", name: "Bail Motion - Johnson Defense", type: "pdf", caseId: "CRM-2023-28", size: "0.5 MB", uploadedBy: "Thomas Baker", uploadDate: "2023-04-22", category: "Motion" },
-  { id: "DOC-1240", name: "Custody Agreement Draft", type: "docx", caseId: "FAM-2023-15", size: "0.4 MB", uploadedBy: "Jennifer Lee", uploadDate: "2023-04-08", category: "Agreement" },
-  { id: "DOC-1241", name: "Financial Disclosures", type: "xlsx", caseId: "FAM-2023-15", size: "0.7 MB", uploadedBy: "Jennifer Lee", uploadDate: "2023-04-07", category: "Disclosure" },
-];
+// Define document type
+interface Document {
+  id: string;
+  name: string;
+  type: string;
+  caseId: string;
+  size: string;
+  uploadedBy: string;
+  uploadDate: string;
+  category: string;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: any;
+}
 
 export default function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
   const role = useUserRole();
+  
+  // Fetch documents from Firebase
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      setLoading(true);
+      try {
+        const q = query(
+          collection(db, "documents"), 
+          orderBy("created_at", "desc")
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const docsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          // Ensure uploadDate exists for UI display
+          uploadDate: doc.data().uploadDate || doc.data().created_at
+        })) as Document[];
+        
+        setDocuments(docsData);
+      } catch (err) {
+        console.error("Error fetching documents:", err);
+        setError("Failed to load documents");
+        toast({
+          title: "Error",
+          description: "Failed to load documents. Please try again later.",
+          variant: "destructive"
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchDocuments();
+  }, [toast]);
   
   const filteredDocuments = documents.filter(
     doc =>
@@ -93,7 +149,13 @@ export default function DocumentsPage() {
           </div>
           
           <div className="flex space-x-2">
-            <UploadDocumentDialog />
+            <UploadDocumentDialog onDocumentUploaded={(doc) => {
+              setDocuments(prev => [doc, ...prev]);
+              toast({
+                title: "Document Uploaded",
+                description: "Your document has been successfully uploaded."
+              });
+            }} />
           </div>
         </div>
         
@@ -145,7 +207,16 @@ export default function DocumentsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredDocuments.length > 0 ? (
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-24 text-center">
+                          <div className="flex justify-center items-center">
+                            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                            <span>Loading documents...</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredDocuments.length > 0 ? (
                       filteredDocuments.map(doc => (
                         <TableRow key={doc.id}>
                           <TableCell className="font-medium flex items-center">
@@ -177,7 +248,10 @@ export default function DocumentsPage() {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
-                          No documents found
+                          {searchQuery ? 
+                            "No documents matching your search" : 
+                            "No documents found. Upload your first document."
+                          }
                         </TableCell>
                       </TableRow>
                     )}
@@ -197,7 +271,18 @@ export default function DocumentsPage() {
               </CardHeader>
               <CardContent className="p-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {documents
+                  {loading ? (
+                    Array(6).fill(0).map((_, i) => (
+                      <div key={i} className="border rounded-md p-4 space-y-3">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-8 h-8 bg-muted rounded-md animate-pulse"></div>
+                          <div className="h-4 bg-muted rounded w-3/4 animate-pulse"></div>
+                        </div>
+                        <div className="h-3 bg-muted rounded w-1/2 animate-pulse"></div>
+                        <div className="h-3 bg-muted rounded w-1/3 animate-pulse"></div>
+                      </div>
+                    ))
+                  ) : documents
                     .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
                     .slice(0, 6)
                     .map(doc => (
@@ -256,17 +341,41 @@ interface DocumentIconProps {
 }
 
 function DocumentIcon({ type, className = "" }: DocumentIconProps) {
+  const iconProps = { className: `h-5 w-5 ${className}` };
+  
   switch (type.toLowerCase()) {
-    case "pdf":
-      return <FileText className={`h-4 w-4 text-red-500 ${className}`} />;
-    case "docx":
-    case "doc":
-      return <FileText className={`h-4 w-4 text-blue-500 ${className}`} />;
-    case "xlsx":
-    case "xls":
-      return <FileText className={`h-4 w-4 text-green-500 ${className}`} />;
+    case 'pdf':
+      return <FileIcon {...iconProps} />;
+    case 'doc':
+    case 'docx':
+    case 'text':
+    case 'txt':
+      return <FileText {...iconProps} />;
+    case 'xls':
+    case 'xlsx':
+    case 'csv':
+      return <Table2 {...iconProps} />;
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+      return <ImageIcon {...iconProps} />;
+    case 'zip':
+    case 'rar':
+      return <Package {...iconProps} />;
+    case 'mp3':
+    case 'wav':
+      return <Music {...iconProps} />;
+    case 'mp4':
+    case 'mov':
+      return <Video {...iconProps} />;
+    case 'html':
+    case 'js':
+    case 'css':
+    case 'json':
+      return <Terminal {...iconProps} />;
     default:
-      return <File className={`h-4 w-4 ${className}`} />;
+      return <File {...iconProps} />;
   }
 }
 
@@ -282,35 +391,31 @@ function DocumentActionsDropdown({ canEdit = false }: { canEdit?: boolean }) {
         <DropdownMenuLabel>Actions</DropdownMenuLabel>
         <DropdownMenuItem>
           <Eye className="mr-2 h-4 w-4" />
-          <span>Preview</span>
+          View
         </DropdownMenuItem>
         <DropdownMenuItem>
           <Download className="mr-2 h-4 w-4" />
-          <span>Download</span>
+          Download
         </DropdownMenuItem>
         <DropdownMenuItem>
           <Share2 className="mr-2 h-4 w-4" />
-          <span>Share</span>
+          Share
         </DropdownMenuItem>
         <DropdownMenuItem>
           <Star className="mr-2 h-4 w-4" />
-          <span>Add to Favorites</span>
+          Add to Favorites
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        
         {canEdit && (
           <>
-            <DropdownMenuItem>
-              <PenLine className="mr-2 h-4 w-4" />
-              <span>Edit Metadata</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <FolderOpen className="mr-2 h-4 w-4" />
-              <span>Move to Folder</span>
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Properties
+            </DropdownMenuItem>
             <DropdownMenuItem className="text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" />
-              <span>Delete</span>
+              <Trash className="mr-2 h-4 w-4" />
+              Delete
             </DropdownMenuItem>
           </>
         )}
@@ -320,52 +425,104 @@ function DocumentActionsDropdown({ canEdit = false }: { canEdit?: boolean }) {
 }
 
 interface DocumentCardProps {
-  document: typeof documents[0];
+  document: Document;
 }
 
 function DocumentCard({ document }: DocumentCardProps) {
   return (
     <div className="border rounded-md p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-start space-x-3">
-        <div className="p-2 rounded-md bg-muted">
-          <DocumentIcon type={document.type} className="h-6 w-6" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-medium truncate" title={document.name}>
-            {document.name}
-          </h3>
-          <div className="text-sm text-muted-foreground">
-            {document.caseId} • {document.size}
+      <div className="flex items-start justify-between">
+        <div className="flex items-start space-x-3">
+          <div className="p-2 rounded-md bg-muted">
+            <DocumentIcon type={document.type} />
           </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Uploaded on {new Date(document.uploadDate).toLocaleDateString()}
+          <div>
+            <h3 className="font-medium truncate" title={document.name}>{document.name}</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              {document.category} • {document.size}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {new Date(document.uploadDate).toLocaleDateString()}
+            </p>
           </div>
         </div>
+        <Button variant="ghost" size="icon">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
       </div>
-      <div className="flex items-center justify-between mt-3 pt-2 border-t">
-        <Badge variant="outline">{document.category}</Badge>
-        <div className="flex space-x-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Download className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Share2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+      <div className="flex space-x-2 mt-4">
+        <Button variant="outline" size="sm" className="w-full">
+          <Eye className="mr-1 h-3 w-3" />
+          View
+        </Button>
+        <Button variant="outline" size="sm" className="w-full">
+          <Download className="mr-1 h-3 w-3" />
+          Download
+        </Button>
       </div>
     </div>
   );
 }
 
-function UploadDocumentDialog() {
+interface UploadDocumentDialogProps {
+  onDocumentUploaded?: (document: Document) => void;
+}
+
+function UploadDocumentDialog({ onDocumentUploaded }: UploadDocumentDialogProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const { toast } = useToast();
+  
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Here you would normally handle the actual file upload to storage
+    // and then create a document record in Firestore
+    
+    setIsUploading(true);
+    
+    try {
+      // Simulate upload delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Create mock document for demo
+      const newDocument: Document = {
+        id: `DOC-${Date.now()}`,
+        name: "New Uploaded Document.pdf",
+        type: "pdf",
+        caseId: "CIV-2023-45",
+        size: "1.5 MB",
+        uploadedBy: "Current User",
+        uploadDate: new Date().toISOString(),
+        category: "Evidence",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      
+      // Trigger callback if provided
+      if (onDocumentUploaded) {
+        onDocumentUploaded(newDocument);
+      }
+      
+      setIsOpen(false);
+      
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast({
+        title: "Upload Failed",
+        description: "There was an error uploading your document.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  
   return (
-    <Dialog>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button>
-          <Upload className="mr-1 h-4 w-4" />
+          <Plus className="mr-1 h-4 w-4" />
           Upload Document
         </Button>
       </DialogTrigger>
@@ -373,54 +530,83 @@ function UploadDocumentDialog() {
         <DialogHeader>
           <DialogTitle>Upload Document</DialogTitle>
           <DialogDescription>
-            Upload case-related documents to the system.
+            Upload a document to associate with a case
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="document-case">Associated Case</Label>
-            <Input id="document-case" placeholder="Enter or select case ID" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="document-title">Document Title</Label>
-            <Input id="document-title" placeholder="Enter document title" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="document-category">Document Category</Label>
-            <Input id="document-category" placeholder="E.g., Pleading, Evidence, Motion" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="document-description">Description (Optional)</Label>
-            <Textarea id="document-description" placeholder="Brief description of the document" />
-          </div>
-          <div className="space-y-2">
-            <Label>File</Label>
-            <div className="border-2 border-dashed rounded-md p-6 text-center hover:bg-muted transition-colors cursor-pointer">
-              <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm font-medium mb-1">Drag and drop your file here</p>
-              <p className="text-xs text-muted-foreground mb-3">Support PDF, Word, Excel files up to 20MB</p>
-              <Button variant="outline" size="sm">
-                Browse Files
-              </Button>
+        <form onSubmit={handleUpload}>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="file">Document File</Label>
+              <div className="flex items-center justify-center w-full">
+                <label
+                  htmlFor="file-upload"
+                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-md cursor-pointer bg-muted/50 hover:bg-muted/80"
+                >
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <UploadCloud className="w-8 h-8 mb-2 text-muted-foreground" />
+                    <p className="mb-2 text-sm text-muted-foreground">
+                      <span className="font-semibold">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      PDF, DOCX, XLSX up to 10MB
+                    </p>
+                  </div>
+                  <input id="file-upload" type="file" className="hidden" />
+                </label>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="case">Associated Case</Label>
+              <select
+                id="case"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="CIV-2023-45">CIV-2023-45 - Smith vs. Albany Corp</option>
+                <option value="CRM-2023-28">CRM-2023-28 - State vs. Johnson</option>
+                <option value="FAM-2023-15">FAM-2023-15 - Thompson Custody</option>
+              </select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="category">Document Category</Label>
+              <select
+                id="category"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="Pleading">Pleading</option>
+                <option value="Evidence">Evidence</option>
+                <option value="Motion">Motion</option>
+                <option value="Report">Report</option>
+                <option value="Order">Court Order</option>
+                <option value="Disclosure">Disclosure</option>
+              </select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                placeholder="Enter a brief description of the document"
+              />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label>Access Control</Label>
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" size="sm" className="text-xs">
-                <UserPlus className="h-3 w-3 mr-1" />
-                Add Users
-              </Button>
-              <Button variant="outline" size="sm" className="text-xs">
-                <Link className="h-3 w-3 mr-1" />
-                Generate Share Link
-              </Button>
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button type="submit">Upload Document</Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isUploading}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isUploading}>
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                "Upload Document"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

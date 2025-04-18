@@ -1,9 +1,9 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Calendar,
   ClipboardList,
@@ -18,81 +18,158 @@ import {
   User,
   Users,
   Video,
+  Loader2
 } from "lucide-react";
+import { db } from "@/integrations/firebase/client";
+import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
+import { caseMockData } from "./mockData";
 
-// Mock data for the component
-const caseMockData = {
-  "CIV-2023-45": {
-    id: "CIV-2023-45",
-    title: "Smith vs. Albany Corp",
-    type: "Civil",
-    status: "pending",
-    priority: "high",
-    filingDate: "2023-04-12",
-    description: "Plaintiff alleges breach of contract and seeks damages of $150,000 for financial losses incurred due to the defendant's failure to deliver services as specified in the agreement dated January 15, 2023.",
-    plaintiff: "James Smith",
-    defendant: "Albany Corporation",
-    judge: "Hon. Rebecca Martinez",
-    attorneys: [
-      { name: "Sarah Johnson", party: "Plaintiff", firm: "Johnson & Associates" },
-      { name: "Michael Williams", party: "Defendant", firm: "Williams Legal Group" }
-    ],
-    hearings: [
-      { id: "H-1234", type: "Pre-trial Conference", date: "2023-05-15", time: "09:30 AM", location: "Courtroom 3B", virtual: true },
-      { id: "H-1235", type: "Evidence Hearing", date: "2023-06-10", time: "10:00 AM", location: "Courtroom 3B", virtual: false }
-    ],
-    documents: [
-      { id: "DOC-1", name: "Initial Complaint", date: "2023-04-12", type: "PDF", size: "1.2 MB" },
-      { id: "DOC-2", name: "Response to Complaint", date: "2023-04-28", type: "PDF", size: "0.9 MB" },
-      { id: "DOC-3", name: "Evidence Exhibit A", date: "2023-05-02", type: "PDF", size: "3.5 MB" }
-    ],
-    updates: [
-      { date: "2023-04-28", user: "System", update: "Response to complaint filed by defendant" },
-      { date: "2023-04-20", user: "Hon. Rebecca Martinez", update: "Pre-trial conference scheduled for May 15, 2023" },
-      { date: "2023-04-12", user: "Sarah Johnson", update: "Initial complaint filed" }
-    ]
-  },
-  "CRM-2023-28": {
-    id: "CRM-2023-28",
-    title: "State vs. Johnson",
-    type: "Criminal",
-    status: "in-progress",
-    priority: "medium",
-    filingDate: "2023-04-10",
-    description: "Defendant charged with felony theft under state statute 18.4.401. Prosecution alleges the defendant unlawfully took property valued at approximately $5,000 from a local retail establishment on March 15, 2023.",
-    plaintiff: "State",
-    defendant: "Robert Johnson",
-    judge: "Hon. Daniel Chen",
-    attorneys: [
-      { name: "Lisa Montgomery", party: "Prosecution", firm: "District Attorney's Office" },
-      { name: "Thomas Baker", party: "Defense", firm: "Public Defender's Office" }
-    ],
-    hearings: [
-      { id: "H-1236", type: "Arraignment", date: "2023-04-20", time: "11:00 AM", location: "Courtroom 5A", virtual: false, completed: true },
-      { id: "H-1237", type: "Bail Hearing", date: "2023-04-25", time: "09:00 AM", location: "Courtroom 5A", virtual: false, completed: true },
-      { id: "H-1238", type: "Preliminary Hearing", date: "2023-05-12", time: "10:30 AM", location: "Courtroom 5A", virtual: true }
-    ],
-    documents: [
-      { id: "DOC-4", name: "Criminal Complaint", date: "2023-04-10", type: "PDF", size: "0.8 MB" },
-      { id: "DOC-5", name: "Police Report", date: "2023-04-10", type: "PDF", size: "1.7 MB" },
-      { id: "DOC-6", name: "Bail Motion", date: "2023-04-22", type: "PDF", size: "0.5 MB" }
-    ],
-    updates: [
-      { date: "2023-04-25", user: "Hon. Daniel Chen", update: "Bail set at $10,000" },
-      { date: "2023-04-20", user: "System", update: "Defendant arraigned, pleaded not guilty" },
-      { date: "2023-04-10", user: "Lisa Montgomery", update: "Criminal charges filed" }
-    ]
-  }
-};
+// Define type for case details
+interface CaseDetails {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  priority: string;
+  description: string;
+  plaintiff: string;
+  defendant: string;
+  judge_id: string;
+  created_at: string;
+  case_number: string;
+  [key: string]: any; // For any additional fields
+}
+
+// Define type for a hearing
+interface Hearing {
+  id: string;
+  caseId: string;
+  title: string;
+  type: string;
+  date: string;
+  time: string;
+  location: string; 
+  virtual: boolean;
+  judge?: string;
+  duration?: number;
+  [key: string]: any;
+}
+
+// Define type for a document
+interface Document {
+  id: string;
+  name: string;
+  date: string;
+  type: string;
+  size: string;
+  caseId: string;
+  category?: string;
+  uploadedBy?: string;
+  [key: string]: any;
+}
 
 export function CaseDetail({ caseId }: { caseId: string }) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [caseData, setCaseData] = useState<CaseDetails | null>(null);
+  const [hearings, setHearings] = useState<Hearing[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   
-  // Get case data from mock
-  const caseData = caseMockData[caseId as keyof typeof caseMockData];
+  useEffect(() => {
+    const fetchCaseData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Get case data
+        const caseRef = doc(db, "cases", caseId);
+        const caseSnap = await getDoc(caseRef);
+        
+        if (caseSnap.exists()) {
+          setCaseData(caseSnap.data() as CaseDetails);
+          
+          // Get hearings for this case
+          const hearingsQuery = query(
+            collection(db, "hearings"),
+            where("caseId", "==", caseId),
+            orderBy("date"),
+            orderBy("time")
+          );
+          
+          const hearingsSnap = await getDocs(hearingsQuery);
+          const hearingsData = hearingsSnap.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Hearing[];
+          
+          setHearings(hearingsData);
+          
+          // Get documents for this case
+          const documentsQuery = query(
+            collection(db, "documents"),
+            where("caseId", "==", caseId),
+            orderBy("created_at", "desc")
+          );
+          
+          const documentsSnap = await getDocs(documentsQuery);
+          const documentsData = documentsSnap.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            // Ensure date is available for UI display
+            date: doc.data().uploadDate || doc.data().created_at
+          })) as Document[];
+          
+          setDocuments(documentsData);
+          
+        } else {
+          // Fall back to mock data if no real data exists
+          console.warn("No Firebase data found for case ID: " + caseId + ", falling back to mock data");
+          const mockCase = caseMockData[caseId as keyof typeof caseMockData];
+          
+          if (mockCase) {
+            setCaseData({
+              id: mockCase.id,
+              title: mockCase.title,
+              type: mockCase.type,
+              status: mockCase.status,
+              priority: mockCase.priority,
+              description: mockCase.description,
+              plaintiff: mockCase.plaintiff,
+              defendant: mockCase.defendant,
+              judge_id: mockCase.judge,
+              created_at: mockCase.filingDate,
+              case_number: mockCase.id
+            });
+            setHearings(mockCase.hearings.map(h => ({
+              ...h,
+              caseId: mockCase.id
+            })));
+            setDocuments(mockCase.documents.map(d => ({
+              ...d,
+              caseId: mockCase.id
+            })));
+          } else {
+            setError("Case not found");
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching case data:", err);
+        setError("Failed to load case data");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchCaseData();
+  }, [caseId]);
   
-  if (!caseData) {
-    return <div>Case not found</div>;
+  if (loading) {
+    return <CaseDetailSkeleton />;
+  }
+  
+  if (error || !caseData) {
+    return <div className="p-4 text-red-500">{error || "Failed to load case details"}</div>;
   }
   
   return (
@@ -106,7 +183,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
           </div>
         </div>
         <div className="text-muted-foreground">
-          {caseData.id} • {caseData.type} • Filed on {new Date(caseData.filingDate).toLocaleDateString()}
+          {caseData.case_number} • {caseData.type} • Filed on {new Date(caseData.created_at).toLocaleDateString()}
         </div>
       </div>
       
@@ -135,11 +212,11 @@ export function CaseDetail({ caseId }: { caseId: string }) {
               </div>
               <div>
                 <h4 className="text-sm font-medium text-muted-foreground">Assigned Judge</h4>
-                <p className="text-base">{caseData.judge}</p>
+                <p className="text-base">{caseData.judge_id}</p>
               </div>
               <div>
                 <h4 className="text-sm font-medium text-muted-foreground">Filing Date</h4>
-                <p className="text-base">{new Date(caseData.filingDate).toLocaleDateString()}</p>
+                <p className="text-base">{new Date(caseData.created_at).toLocaleDateString()}</p>
               </div>
             </div>
           </section>
@@ -149,44 +226,50 @@ export function CaseDetail({ caseId }: { caseId: string }) {
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium">Upcoming Hearings</h3>
-              <Button variant="ghost" size="sm">View All</Button>
+              <Button variant="ghost" size="sm" onClick={() => setActiveTab("hearings")}>View All</Button>
             </div>
             <div className="space-y-2">
-              {caseData.hearings
-                // Show only the first two hearings
-                .slice(0, 2)
-                .map(hearing => (
-                  <div key={hearing.id} className="flex items-center justify-between border rounded-md p-3">
-                    <div className="space-y-1">
-                      <div className="font-medium">{hearing.type}</div>
-                      <div className="text-sm text-muted-foreground flex flex-wrap gap-x-2 gap-y-1 items-center">
-                        <span className="flex items-center">
-                          <Calendar className="mr-1 h-3 w-3" />
-                          {new Date(hearing.date).toLocaleDateString()}
-                        </span>
-                        <span className="flex items-center">
-                          <Clock className="mr-1 h-3 w-3" />
-                          {hearing.time}
-                        </span>
-                        <span className="flex items-center">
-                          <MapPin className="mr-1 h-3 w-3" />
-                          {hearing.location}
-                        </span>
+              {hearings.length > 0 ? (
+                hearings
+                  // Show only the first two hearings
+                  .slice(0, 2)
+                  .map(hearing => (
+                    <div key={hearing.id} className="flex items-center justify-between border rounded-md p-3">
+                      <div className="space-y-1">
+                        <div className="font-medium">{hearing.type}</div>
+                        <div className="text-sm text-muted-foreground flex flex-wrap gap-x-2 gap-y-1 items-center">
+                          <span className="flex items-center">
+                            <Calendar className="mr-1 h-3 w-3" />
+                            {new Date(hearing.date).toLocaleDateString()}
+                          </span>
+                          <span className="flex items-center">
+                            <Clock className="mr-1 h-3 w-3" />
+                            {hearing.time}
+                          </span>
+                          <span className="flex items-center">
+                            <MapPin className="mr-1 h-3 w-3" />
+                            {hearing.location}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        <Badge variant={hearing.virtual ? "default" : "outline"}>
+                          {hearing.virtual ? "Virtual" : "In-Person"}
+                        </Badge>
+                        {hearing.virtual && (
+                          <Button size="sm" className="ml-2">
+                            <Video className="mr-1 h-3 w-3" />
+                            Join
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center">
-                      <Badge variant={hearing.virtual ? "default" : "outline"}>
-                        {hearing.virtual ? "Virtual" : "In-Person"}
-                      </Badge>
-                      {hearing.virtual && (
-                        <Button size="sm" className="ml-2">
-                          <Video className="mr-1 h-3 w-3" />
-                          Join
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  ))
+              ) : (
+                <div className="text-center py-3 text-muted-foreground border rounded-md">
+                  No hearings scheduled
+                </div>
+              )}
             </div>
           </section>
           
@@ -195,46 +278,33 @@ export function CaseDetail({ caseId }: { caseId: string }) {
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium">Recent Documents</h3>
-              <Button variant="ghost" size="sm">View All</Button>
+              <Button variant="ghost" size="sm" onClick={() => setActiveTab("documents")}>View All</Button>
             </div>
             <div className="space-y-2">
-              {caseData.documents.slice(0, 3).map(doc => (
-                <div key={doc.id} className="flex items-center justify-between border rounded-md p-3">
-                  <div className="flex items-start space-x-3">
-                    <div className="p-2 rounded-md bg-muted">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <div className="font-medium">{doc.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {new Date(doc.date).toLocaleDateString()} • {doc.type} • {doc.size}
+              {documents.length > 0 ? (
+                documents.slice(0, 3).map(doc => (
+                  <div key={doc.id} className="flex items-center justify-between border rounded-md p-3">
+                    <div className="flex items-start space-x-3">
+                      <div className="p-2 rounded-md bg-muted">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <div className="font-medium">{doc.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {new Date(doc.date).toLocaleDateString()} • {doc.type} • {doc.size}
+                        </div>
                       </div>
                     </div>
+                    <Button variant="ghost" size="icon">
+                      <Download className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button variant="ghost" size="icon">
-                    <Download className="h-4 w-4" />
-                  </Button>
+                ))
+              ) : (
+                <div className="text-center py-3 text-muted-foreground border rounded-md">
+                  No documents available
                 </div>
-              ))}
-            </div>
-          </section>
-          
-          <Separator />
-          
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium">Recent Updates</h3>
-              <Button variant="ghost" size="sm">View All</Button>
-            </div>
-            <div className="space-y-4">
-              {caseData.updates.slice(0, 3).map((update, idx) => (
-                <div key={idx} className="space-y-1">
-                  <div className="text-sm text-muted-foreground">
-                    {new Date(update.date).toLocaleDateString()} by {update.user}
-                  </div>
-                  <div>{update.update}</div>
-                </div>
-              ))}
+              )}
             </div>
           </section>
         </TabsContent>
@@ -250,7 +320,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
             </div>
             
             <div className="space-y-4">
-              {caseData.hearings.map(hearing => (
+              {hearings.map(hearing => (
                 <div key={hearing.id} className="border rounded-md p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="font-medium text-lg">{hearing.type}</h4>
@@ -293,10 +363,10 @@ export function CaseDetail({ caseId }: { caseId: string }) {
                       <ClipboardList className="mr-1 h-4 w-4" />
                       View Agenda
                     </Button>
-                    {hearing.completed && (
+                    {hearing.duration && (
                       <Button variant="outline">
-                        <FileText className="mr-1 h-4 w-4" />
-                        View Transcript
+                        <Loader2 className="mr-1 h-4 w-4" />
+                        {hearing.duration} minutes
                       </Button>
                     )}
                   </div>
@@ -319,7 +389,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
             </div>
             
             <div className="space-y-4">
-              {caseData.documents.map(doc => (
+              {documents.map(doc => (
                 <div key={doc.id} className="flex items-center justify-between border rounded-md p-4">
                   <div className="flex items-start space-x-3">
                     <div className="p-2 rounded-md bg-muted">
@@ -380,27 +450,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
             <section className="space-y-3">
               <h3 className="text-lg font-medium">Legal Representation</h3>
               <div className="space-y-4">
-                {caseData.attorneys.map((attorney, idx) => (
-                  <div key={idx} className="border rounded-md p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium">{attorney.name}</h4>
-                      <Badge variant="outline">{attorney.party} Counsel</Badge>
-                    </div>
-                    <div className="text-sm text-muted-foreground mb-3">
-                      {attorney.firm}
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button variant="outline" size="sm">
-                        <Phone className="mr-1 h-3 w-3" />
-                        Contact
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <FileText className="mr-1 h-3 w-3" />
-                        View Filings
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                {/* Legal representation section would be populated here */}
               </div>
               <Button variant="outline" className="mt-2">
                 <Users className="mr-1 h-4 w-4" />
@@ -414,7 +464,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
               <h3 className="text-lg font-medium">Court Assignment</h3>
               <div className="border rounded-md p-4">
                 <h4 className="font-medium mb-2">Presiding Judge</h4>
-                <div className="text-base mb-3">{caseData.judge}</div>
+                <div className="text-base mb-3">{caseData.judge_id}</div>
                 <Button variant="outline" size="sm">
                   <Calendar className="mr-1 h-3 w-3" />
                   View Judge's Calendar
@@ -429,19 +479,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
             <h3 className="text-lg font-medium">Case History</h3>
             
             <div className="space-y-4">
-              {caseData.updates.map((update, idx) => (
-                <div key={idx} className="border-l-2 border-muted pl-4 pb-4">
-                  <div className="text-sm font-medium">
-                    {new Date(update.date).toLocaleDateString()}
-                  </div>
-                  <div className="text-muted-foreground text-sm mb-1">
-                    {update.user}
-                  </div>
-                  <div>
-                    {update.update}
-                  </div>
-                </div>
-              ))}
+              {/* Case history section would be populated here */}
             </div>
           </div>
         </TabsContent>
@@ -450,10 +488,45 @@ export function CaseDetail({ caseId }: { caseId: string }) {
   );
 }
 
+function CaseDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-4 w-1/3" />
+      </div>
+      
+      <div className="space-y-2">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-24 w-full" />
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </div>
+      
+      <Skeleton className="h-0.5 w-full" />
+      
+      <div className="space-y-2">
+        <div className="flex justify-between">
+          <Skeleton className="h-6 w-1/3" />
+          <Skeleton className="h-6 w-20" />
+        </div>
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-20 w-full" />
+      </div>
+    </div>
+  );
+}
+
 function CaseStatusBadge({ status }: { status: string }) {
-  switch (status) {
+  switch (status.toLowerCase()) {
     case "pending":
       return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">Pending</Badge>;
+    case "in progress":
     case "in-progress":
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">In Progress</Badge>;
     case "adjourned":
@@ -466,7 +539,7 @@ function CaseStatusBadge({ status }: { status: string }) {
 }
 
 function CasePriorityBadge({ priority }: { priority: string }) {
-  switch (priority) {
+  switch (priority.toLowerCase()) {
     case "high":
       return <Badge variant="default" className="bg-destructive">High</Badge>;
     case "medium":

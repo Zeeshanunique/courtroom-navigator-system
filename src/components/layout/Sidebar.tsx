@@ -1,18 +1,23 @@
-
 import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Calendar, FileText, Folder, Gavel, Home, 
-  Menu, Users, Video, LogOut, Settings, BarChart
-} from "lucide-react";
+import { Calendar, FileText, Folder, Gavel, Home, LogOut, Menu, Settings, Users, Video, BarChart } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useAuth } from "@/hooks/useAuth";
+
+interface NavItemProps {
+  to: string;
+  icon: React.ElementType;
+  text: string;
+  collapsed: boolean;
+}
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const role = useUserRole();
+  const { signOut } = useAuth();
 
   return (
     <div
@@ -40,7 +45,7 @@ export function Sidebar() {
       <ScrollArea className="flex-1">
         <div className="px-2 py-2">
           <nav className="grid gap-1">
-            <NavItem to="/" icon={Home} text="Dashboard" collapsed={collapsed} />
+            <NavItem to="/dashboard" icon={Home} text="Dashboard" collapsed={collapsed} />
             <NavItem to="/cases" icon={Folder} text="Cases" collapsed={collapsed} />
             <NavItem to="/calendar" icon={Calendar} text="Calendar" collapsed={collapsed} />
             <NavItem to="/documents" icon={FileText} text="Documents" collapsed={collapsed} />
@@ -72,6 +77,7 @@ export function Sidebar() {
           variant="ghost"
           size={collapsed ? "icon" : "default"}
           className="w-full justify-start text-sidebar-foreground"
+          onClick={() => signOut()}
         >
           <LogOut className="h-4 w-4 mr-2" />
           {!collapsed && <span>Logout</span>}
@@ -81,29 +87,24 @@ export function Sidebar() {
   );
 }
 
-interface NavItemProps {
-  to: string;
-  icon: React.FC<{ className?: string }>;
-  text: string;
-  collapsed: boolean;
-}
-
 function NavItem({ to, icon: Icon, text, collapsed }: NavItemProps) {
+  const location = useLocation();
+  const isActive = location.pathname === to || 
+    (to !== "/" && location.pathname.startsWith(to));
+  
   return (
-    <NavLink
+    <Link
       to={to}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center rounded-md px-2 py-2 text-sm font-medium transition-colors",
-          isActive
-            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-            : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
-          collapsed && "justify-center"
-        )
-      }
+      className={cn(
+        "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
+        isActive 
+          ? "bg-sidebar-active text-sidebar-active-foreground" 
+          : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-hover-foreground",
+        collapsed && "justify-center px-0"
+      )}
     >
-      <Icon className={cn("h-4 w-4", !collapsed && "mr-2")} />
+      <Icon className={cn("h-5 w-5", collapsed ? "" : "mr-2")} />
       {!collapsed && <span>{text}</span>}
-    </NavLink>
+    </Link>
   );
 }
