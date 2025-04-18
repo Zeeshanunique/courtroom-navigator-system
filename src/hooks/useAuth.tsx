@@ -1,4 +1,3 @@
-
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -43,13 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setState(prev => ({ ...prev, session, user: session?.user ?? null }));
         
         if (session?.user) {
-          // Fetch user profile with setTimeout to avoid Supabase deadlock
           setTimeout(async () => {
             await fetchProfile(session.user.id);
           }, 0);
@@ -59,7 +56,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // Then check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setState(prev => ({ ...prev, session, user: session?.user ?? null, isLoading: false }));
       
@@ -92,12 +88,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    
     if (error) {
-      toast({
-        title: "Login Failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      if (error.message.includes("Email not confirmed")) {
+        toast({
+          title: "Email Verification",
+          description: "Please check your email to verify your account.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Login Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
       return { error };
     }
     
@@ -129,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     toast({
       title: "Registration Successful",
-      description: "Your account has been created! Please verify your email to log in.",
+      description: "Your account has been created!",
     });
     return { error: null };
   };
@@ -160,7 +165,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error };
     }
 
-    // Refresh profile data
     await fetchProfile(state.user.id);
     
     toast({
@@ -191,7 +195,6 @@ export const useAuth = () => {
   return context;
 };
 
-// Custom hook for role-based access control
 export const useHasAccess = (allowedRoles: UserRole[]) => {
   const { profile } = useAuth();
   return profile && allowedRoles.includes(profile.role as UserRole);
