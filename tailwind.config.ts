@@ -61,7 +61,36 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
-				}
+				},
+        // Legal system specific colors
+        justice: {
+          50: '#f0f7ff',
+          100: '#e0f0ff',
+          200: '#b9ddff',
+          300: '#7cc2ff',
+          400: '#3aa1ff',
+          500: '#1a81f8',
+          600: '#0a62ed',
+          700: '#084fd4',
+          800: '#0d41ac',
+          900: '#0f3886',
+          950: '#0c2456',
+          foreground: '#ffffff'
+        },
+        legal: {
+          50: '#f5f7fa',
+          100: '#ebeef3',
+          200: '#d2dbe6',
+          300: '#aabcd1',
+          400: '#7b98b7',
+          500: '#587a9f',
+          600: '#466285',
+          700: '#39506c',
+          800: '#32455c',
+          900: '#2d3c4f',
+          950: '#1c2536',
+          foreground: '#ffffff'
+        }
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
