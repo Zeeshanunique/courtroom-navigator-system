@@ -14,8 +14,6 @@ export default function Auth() {
             card: "shadow-lg bg-background",
           }
         }}
-        routing="path"
-        path="/"
         redirectUrl="/dashboard"
         signUpUrl="/sign-up"
       />
