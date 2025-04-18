@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -19,9 +19,17 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4">
             {user ? (
-              <Button onClick={() => navigate("/dashboard")}>
-                Back to Dashboard
-              </Button>
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-muted-foreground hidden md:inline-block">
+                  Welcome back, {profile?.first_name || 'User'}
+                </span>
+                <Button variant="outline" onClick={() => navigate("/dashboard")}>
+                  Dashboard
+                </Button>
+                <Button onClick={() => navigate("/cases")}>
+                  My Cases
+                </Button>
+              </div>
             ) : (
               <>
                 <Button variant="ghost" onClick={() => navigate("/login")}>
@@ -41,18 +49,33 @@ export default function LandingPage() {
         <div className="container grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="space-y-6">
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-              Modern Case Management for Legal Professionals
+              {user ? 'Welcome Back to Your Legal Workspace' : 'Modern Case Management for Legal Professionals'}
             </h1>
             <p className="text-xl text-muted-foreground">
-              Streamline your court proceedings, manage cases efficiently, and improve access to justice with our comprehensive digital solution.
+              {user 
+                ? 'Continue managing your cases, hearings, and documents with our powerful digital tools.'
+                : 'Streamline your court proceedings, manage cases efficiently, and improve access to justice with our comprehensive digital solution.'}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
-              <Button size="lg" onClick={() => navigate("/register")}>
-                Get Started <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-              <Button size="lg" variant="outline" onClick={() => navigate("/demo")}>
-                Watch Demo
-              </Button>
+              {user ? (
+                <>
+                  <Button size="lg" onClick={() => navigate("/dashboard")}>
+                    Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={() => navigate("/calendar")}>
+                    View Calendar
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button size="lg" onClick={() => navigate("/register")}>
+                    Get Started <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={() => navigate("/demo")}>
+                    Watch Demo
+                  </Button>
+                </>
+              )}
             </div>
           </div>
           <div className="bg-gradient-to-br from-primary/20 to-primary/5 border rounded-lg p-8 shadow-lg h-[380px] flex items-center justify-center">
@@ -134,18 +157,33 @@ export default function LandingPage() {
         <div className="container">
           <div className="bg-primary/10 border rounded-lg p-12 text-center max-w-3xl mx-auto">
             <h2 className="text-3xl font-bold tracking-tight mb-4">
-              Ready to Transform Your Legal Practice?
+              {user ? 'Ready to Continue Your Work?' : 'Ready to Transform Your Legal Practice?'}
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              Join thousands of legal professionals who have streamlined their workflow with Courtroom Navigator.
+              {user 
+                ? 'Return to your workspace and manage your legal cases efficiently.'
+                : 'Join thousands of legal professionals who have streamlined their workflow with Courtroom Navigator.'}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="lg" onClick={() => navigate("/register")}>
-                Start Free Trial
-              </Button>
-              <Button size="lg" variant="outline" onClick={() => navigate("/contact")}>
-                Schedule a Demo
-              </Button>
+              {user ? (
+                <>
+                  <Button size="lg" onClick={() => navigate("/dashboard")}>
+                    Go to Dashboard
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={() => navigate("/documents")}>
+                    View Documents
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button size="lg" onClick={() => navigate("/register")}>
+                    Start Free Trial
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={() => navigate("/contact")}>
+                    Schedule a Demo
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>

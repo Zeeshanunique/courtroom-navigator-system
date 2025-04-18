@@ -1,22 +1,107 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dashboard as DashboardLayout } from "@/components/layout/Dashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Calendar, Clock, FileCheck, FilePlus, User, Users, Video } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { Calendar, Clock, ExternalLink, FileCheck, FilePlus, Loader2, User, Users, Video } from "lucide-react";
 import { CaseStatusChart } from "@/components/dashboard/CaseStatusChart";
 import { RecentCases } from "@/components/dashboard/RecentCases";
 import { UpcomingHearings } from "@/components/dashboard/UpcomingHearings";
+import { useNavigate, Link } from "react-router-dom";
+import { useFetchCollection, useCollectionCount } from "@/hooks/useFirebaseQuery";
+import { useState, useEffect } from "react";
+import { db } from "@/integrations/firebase/client";
+import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 
 export default function DashboardPage() {
   const role = useUserRole();
+  const { user, profile } = useAuth();
+  const navigate = useNavigate();
+  
+  // States for statistics
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [casesTotal, setCasesTotal] = useState<number | null>(null);
+  const [upcomingHearings, setUpcomingHearings] = useState<number | null>(null);
+  const [documentCompletion, setDocumentCompletion] = useState<string | null>(null);
+  const [assignedCases, setAssignedCases] = useState<number | null>(null);
+  
+  // Get user's actual name if available, otherwise fall back to role-based demo name
+  const userName = profile?.first_name 
+    ? `${profile.first_name} ${profile.last_name || ''}` 
+    : getDemoNameByRole(role);
+  
+  // Get counts from Firebase
+  const { count: totalCaseCount, isLoading: isCasesLoading } = useCollectionCount("cases");
+  
+  // Load statistics
+  useEffect(() => {
+    const fetchStatistics = async () => {
+      setIsLoadingStats(true);
+      try {
+        // Get upcoming hearings (next 7 days)
+        const today = new Date();
+        const nextWeek = new Date();
+        nextWeek.setDate(today.getDate() + 7);
+        
+        const hearingsQuery = query(
+          collection(db, "hearings"), 
+          where("date", ">=", today.toISOString().split('T')[0]),
+          where("date", "<=", nextWeek.toISOString().split('T')[0])
+        );
+        
+        const hearingsSnapshot = await getDocs(hearingsQuery);
+        setUpcomingHearings(hearingsSnapshot.size);
+        
+        // Get document completion rate (documents vs. cases)
+        const docsQuery = query(collection(db, "documents"));
+        const docsSnapshot = await getDocs(docsQuery);
+        
+        // If we have cases and at least some documents
+        if (totalCaseCount && docsSnapshot.size > 0) {
+          // Calculate an approximate completion percentage
+          // (This is simplified - in a real app you'd have a more sophisticated calculation)
+          const expectedDocsPerCase = 3; // Assuming each case should have ~3 documents
+          const expectedTotal = totalCaseCount * expectedDocsPerCase;
+          const completionRate = Math.min(Math.round((docsSnapshot.size / expectedTotal) * 100), 100);
+          setDocumentCompletion(completionRate + '%');
+        } else {
+          setDocumentCompletion('0%');
+        }
+        
+        // Get assigned cases for the current user
+        if (user) {
+          const assignedQuery = query(
+            collection(db, "cases"),
+            where("assignedTo", "==", user.uid)
+          );
+          const assignedSnapshot = await getDocs(assignedQuery);
+          setAssignedCases(assignedSnapshot.size);
+        }
+        
+        // Set total cases 
+        setCasesTotal(totalCaseCount || 0);
+        
+      } catch (error) {
+        console.error("Error fetching dashboard statistics:", error);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+    
+    if (!isCasesLoading && totalCaseCount !== null) {
+      fetchStatistics();
+    }
+  }, [totalCaseCount, isCasesLoading, user]);
   
   return (
     <DashboardLayout>
-      <div className="flex flex-col">
-        <h1 className="text-3xl font-bold tracking-tight mb-6">Welcome, {getDemoNameByRole(role)}</h1>
+      <div className="flex flex-col space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight">Welcome to Courtroom Navigator</h1>
+          <p className="text-muted-foreground">Hello, {userName}! Here's an overview of your legal workflow.</p>
+        </div>
         
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList>
@@ -29,31 +114,27 @@ export default function DashboardPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <StatsCard 
                 title="Total Cases" 
-                value="156" 
+                value={isLoadingStats ? <Loader2 className="h-5 w-5 animate-spin" /> : (casesTotal?.toString() || "0")}
                 description="Active cases in the system"
                 icon={FileCheck} 
-                trend="+12% from last month"
               />
               <StatsCard 
                 title="Upcoming Hearings" 
-                value="24" 
+                value={isLoadingStats ? <Loader2 className="h-5 w-5 animate-spin" /> : (upcomingHearings?.toString() || "0")}
                 description="Scheduled for next 7 days"
                 icon={Video} 
-                trend="+3 since yesterday"
               />
               <StatsCard 
                 title="Documentation" 
-                value="89%" 
+                value={isLoadingStats ? <Loader2 className="h-5 w-5 animate-spin" /> : (documentCompletion || "0%")}
                 description="Completion rate"
                 icon={FilePlus} 
-                trend="+4% from last week"
               />
               <StatsCard 
                 title={role === "judge" ? "Cases Presided" : "Cases Assigned"} 
-                value="42" 
+                value={isLoadingStats ? <Loader2 className="h-5 w-5 animate-spin" /> : (assignedCases?.toString() || "0")}
                 description="Currently active"
                 icon={User} 
-                trend=""
               />
             </div>
             
@@ -73,10 +154,26 @@ export default function DashboardPage() {
                   <CardTitle className="text-base font-normal">Quick Access</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <QuickAccessButton icon={FilePlus} text="Register New Case" />
-                  <QuickAccessButton icon={Calendar} text="Schedule Hearing" />
-                  <QuickAccessButton icon={Clock} text="View Calendar" />
-                  <QuickAccessButton icon={Users} text="Manage Case Access" />
+                  <QuickAccessButton 
+                    icon={FilePlus} 
+                    text="Register New Case"
+                    onClick={() => navigate("/cases")}
+                  />
+                  <QuickAccessButton 
+                    icon={Calendar} 
+                    text="Schedule Hearing"
+                    onClick={() => navigate("/calendar")}
+                  />
+                  <QuickAccessButton 
+                    icon={Clock} 
+                    text="View Calendar"
+                    onClick={() => navigate("/calendar")}
+                  />
+                  <QuickAccessButton 
+                    icon={Users} 
+                    text="Manage Documents"
+                    onClick={() => navigate("/documents")}
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -111,7 +208,13 @@ export default function DashboardPage() {
                 <CardDescription>Cases assigned to or filed by you</CardDescription>
               </CardHeader>
               <CardContent>
-                <p>Case listing would appear here...</p>
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-muted-foreground">Showing your most recent cases</p>
+                  <Button onClick={() => navigate("/cases")}>
+                    View All Cases
+                  </Button>
+                </div>
+                <RecentCases />
               </CardContent>
             </Card>
           </TabsContent>
@@ -123,11 +226,24 @@ export default function DashboardPage() {
                 <CardDescription>Upcoming and past hearings</CardDescription>
               </CardHeader>
               <CardContent>
-                <p>Hearing schedule would appear here...</p>
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-muted-foreground">Your scheduled hearings for the next 30 days</p>
+                  <Button onClick={() => navigate("/calendar")}>
+                    View Full Calendar
+                  </Button>
+                </div>
+                <UpcomingHearings />
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
+        
+        <div className="text-center py-6">
+          <Link to="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors">
+            <ExternalLink className="h-4 w-4 mr-1" />
+            View Courtroom Navigator Home Page
+          </Link>
+        </div>
       </div>
     </DashboardLayout>
   );
@@ -135,7 +251,7 @@ export default function DashboardPage() {
 
 interface StatsCardProps {
   title: string;
-  value: string;
+  value: string | React.ReactNode;
   description: string;
   icon: React.FC<{ className?: string }>;
   trend?: string;
@@ -149,7 +265,7 @@ function StatsCard({ title, value, description, icon: Icon, trend }: StatsCardPr
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div className="text-2xl font-bold flex items-center h-8">{value}</div>
         <p className="text-xs text-muted-foreground">{description}</p>
         {trend && <p className="text-xs text-primary mt-1">{trend}</p>}
       </CardContent>
@@ -160,11 +276,12 @@ function StatsCard({ title, value, description, icon: Icon, trend }: StatsCardPr
 interface QuickAccessButtonProps {
   icon: React.FC<{ className?: string }>;
   text: string;
+  onClick?: () => void;
 }
 
-function QuickAccessButton({ icon: Icon, text }: QuickAccessButtonProps) {
+function QuickAccessButton({ icon: Icon, text, onClick }: QuickAccessButtonProps) {
   return (
-    <Button variant="outline" className="w-full justify-start">
+    <Button variant="outline" className="w-full justify-start" onClick={onClick}>
       <Icon className="mr-2 h-4 w-4" />
       {text}
     </Button>

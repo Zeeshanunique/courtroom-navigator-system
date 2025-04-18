@@ -1,19 +1,72 @@
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Video, Users } from "lucide-react";
+import { Calendar, Video, Users, Loader2 } from "lucide-react";
+import { useFetchCollection } from "@/hooks/useFirebaseQuery";
+import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 
-// Demo data
-const hearings = [
-  { id: "H-1234", caseId: "CIV-2023-45", title: "Smith vs. Albany Corp", type: "Pre-trial", date: "2023-04-20", time: "09:30 AM", virtual: true },
-  { id: "H-1235", caseId: "CRM-2023-28", title: "State vs. Johnson", type: "Hearing", date: "2023-04-21", time: "11:00 AM", virtual: true },
-  { id: "H-1236", caseId: "FAM-2023-15", title: "Thompson Custody", type: "Mediation", date: "2023-04-22", time: "14:00 PM", virtual: false },
-];
+// Define hearing type
+interface Hearing {
+  id: string;
+  caseId: string;
+  title: string;
+  type: string;
+  date: string;
+  time: string;
+  virtual: boolean;
+  courtroom?: string;
+  judge?: string;
+  participants?: string[];
+  notes?: string;
+  created_at?: string;
+}
 
 export function UpcomingHearings() {
+  const navigate = useNavigate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Fetch upcoming hearings from Firebase
+  const { data: hearingsData, isLoading, isError } = useFetchCollection<Hearing>("hearings", {
+    filters: [
+      {
+        field: "date",
+        operator: ">=",
+        value: today.toISOString().split('T')[0],
+      }
+    ],
+    orderByField: "date",
+    orderDirection: "asc",
+    limit: 3,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-32">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isError || !hearingsData) {
+    return (
+      <div className="text-center py-4 text-muted-foreground">
+        Unable to load hearings. Please try again later.
+      </div>
+    );
+  }
+
+  if (hearingsData.length === 0) {
+    return (
+      <div className="text-center py-4 text-muted-foreground">
+        No upcoming hearings found. Schedule your first hearing to get started.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {hearings.map((hearing) => (
+      {hearingsData.map((hearing) => (
         <div key={hearing.id} className="flex flex-col space-y-2 border rounded-md p-3">
           <div className="flex items-center justify-between">
             <div className="font-medium">{hearing.title}</div>
@@ -33,12 +86,21 @@ export function UpcomingHearings() {
           </div>
           <div className="flex items-center space-x-2 pt-1">
             {hearing.virtual && (
-              <Button size="sm" className="h-8">
+              <Button 
+                size="sm" 
+                className="h-8"
+                onClick={() => navigate(`/calendar?hearing=${hearing.id}&action=join`)}
+              >
                 <Video className="mr-1 h-3 w-3" />
                 Join Virtually
               </Button>
             )}
-            <Button variant="outline" size="sm" className="h-8">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-8"
+              onClick={() => navigate(`/calendar?hearing=${hearing.id}`)}
+            >
               <Users className="mr-1 h-3 w-3" />
               Participants
             </Button>
