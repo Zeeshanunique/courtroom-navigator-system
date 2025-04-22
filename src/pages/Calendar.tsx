@@ -34,7 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { db } from "@/integrations/firebase/client";
-import { collection, query, orderBy, getDocs, Timestamp } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, Timestamp, addDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
@@ -456,37 +456,131 @@ function AddHearingDialog({ onHearingAdded }: AddHearingDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const [date, setDate] = useState<Date | undefined>(new Date());
+  const [formData, setFormData] = useState({
+    caseId: "",
+    title: "",
+    type: "Status Conference",
+    time: "09:00",
+    judge: "",
+    mode: "virtual",
+    location: "",
+    notes: ""
+  });
+
+  // Fetch available cases for dropdown
+  const [availableCases, setAvailableCases] = useState<Array<{id: string, case_number: string, title: string}>>([]);
+  const [loadingCases, setLoadingCases] = useState(false);
+
+  useEffect(() => {
+    const fetchCases = async () => {
+      setLoadingCases(true);
+      try {
+        const q = query(collection(db, "cases"), orderBy("created_at", "desc"));
+        const querySnapshot = await getDocs(q);
+        const casesData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Array<{id: string, case_number: string, title: string}>;
+        
+        setAvailableCases(casesData);
+      } catch (err) {
+        console.error("Error fetching cases:", err);
+        toast({
+          title: "Error",
+          description: "Failed to load cases for selection.",
+          variant: "destructive"
+        });
+      } finally {
+        setLoadingCases(false);
+      }
+    };
+
+    if (isOpen) {
+      fetchCases();
+    }
+  }, [isOpen, toast]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { id: fieldId, value } = e.target;
+    setFormData(prev => ({ ...prev, [fieldId]: value }));
+  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Here you would normally handle creating the hearing in Firestore
+    if (!formData.caseId || !formData.title || !formData.judge || !date) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     setIsSubmitting(true);
     
     try {
-      // Simulate delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Format date in yyyy-MM-dd format
+      const formattedDate = format(date, "yyyy-MM-dd");
       
-      // Create mock hearing for demo
-      const newHearing: Hearing = {
-        id: `HEAR-${Date.now()}`,
-        caseId: "CIV-2023-45",
-        title: "Initial Conference",
-        type: "Status Conference",
-        date: format(date || new Date(), "yyyy-MM-dd"),
-        time: "09:30 AM",
-        virtual: true,
-        judge: "Judge Michael Reynolds",
+      // Create new hearing object with base properties
+      const newHearing: Record<string, any> = {
+        caseId: formData.caseId,
+        title: formData.title,
+        type: formData.type,
+        date: formattedDate,
+        time: formData.time,
+        virtual: formData.mode === "virtual",
+        judge: formData.judge,
+        notes: formData.notes || "",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
       
-      // Trigger callback if provided
-      if (onHearingAdded) {
-        onHearingAdded(newHearing);
+      // Only add courtroom if it's an in-person hearing and has a location
+      if (formData.mode === "in-person" && formData.location) {
+        newHearing.courtroom = formData.location;
       }
       
+      // Add participants from selected case if available
+      const selectedCase = availableCases.find(c => c.case_number === formData.caseId);
+      if (selectedCase) {
+        newHearing.title = newHearing.title || `Hearing for ${selectedCase.title}`;
+      }
+      
+      // Save to Firebase
+      const docRef = await addDoc(collection(db, "hearings"), newHearing);
+      
+      // Add ID to the hearing object for the callback
+      const hearingWithId: Hearing = {
+        id: docRef.id,
+        ...newHearing
+      } as Hearing;
+      
+      // Trigger callback if provided
+      if (onHearingAdded) {
+        onHearingAdded(hearingWithId);
+      }
+      
+      toast({
+        title: "Hearing Scheduled",
+        description: "The hearing has been successfully scheduled.",
+      });
+      
+      // Reset form
+      setFormData({
+        caseId: "",
+        title: "",
+        type: "Status Conference",
+        time: "09:00",
+        judge: "",
+        mode: "virtual",
+        location: "",
+        notes: ""
+      });
+      setDate(new Date());
+      
+      // Close dialog
       setIsOpen(false);
       
     } catch (error) {
@@ -509,104 +603,157 @@ function AddHearingDialog({ onHearingAdded }: AddHearingDialogProps) {
           Schedule Hearing
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Schedule Hearing</DialogTitle>
           <DialogDescription>
             Create a new court hearing or appointment
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="case">Case</Label>
-              <select
-                id="case"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="CIV-2023-45">CIV-2023-45 - Smith vs. Albany Corp</option>
-                <option value="CRM-2023-28">CRM-2023-28 - State vs. Johnson</option>
-                <option value="FAM-2023-15">FAM-2023-15 - Thompson Custody</option>
-              </select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="title">Hearing Title</Label>
-              <Input id="title" placeholder="e.g., Initial Conference, Motion Hearing" />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="type">Hearing Type</Label>
-              <select
-                id="type"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="Status Conference">Status Conference</option>
-                <option value="Motion Hearing">Motion Hearing</option>
-                <option value="Trial">Trial</option>
-                <option value="Arraignment">Arraignment</option>
-                <option value="Sentencing">Sentencing</option>
-                <option value="Settlement Conference">Settlement Conference</option>
-              </select>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
+        <div className="overflow-y-auto pr-1 -mr-1">
+          <form id="hearing-form" onSubmit={handleSubmit}>
+            <div className="grid gap-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="date">Date</Label>
-                <div className="relative">
-                  <div className="absolute inset-0 rounded-md">
+                <Label htmlFor="caseId">Case</Label>
+                {loadingCases ? (
+                  <div className="flex items-center space-x-2 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm text-muted-foreground">Loading cases...</span>
+                  </div>
+                ) : (
+                  <select
+                    id="caseId"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={formData.caseId}
+                    onChange={handleChange}
+                  >
+                    <option value="">Select a case</option>
+                    {availableCases.map(caseItem => (
+                      <option key={caseItem.id} value={caseItem.case_number}>
+                        {caseItem.case_number} - {caseItem.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="title">Hearing Title</Label>
+                <Input 
+                  id="title" 
+                  placeholder="e.g., Initial Conference, Motion Hearing" 
+                  value={formData.title}
+                  onChange={handleChange}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="type">Hearing Type</Label>
+                <select
+                  id="type"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={formData.type}
+                  onChange={handleChange}
+                >
+                  <option value="Status Conference">Status Conference</option>
+                  <option value="Motion Hearing">Motion Hearing</option>
+                  <option value="Trial">Trial</option>
+                  <option value="Arraignment">Arraignment</option>
+                  <option value="Sentencing">Sentencing</option>
+                  <option value="Settlement Conference">Settlement Conference</option>
+                  <option value="Case Management">Case Management</option>
+                  <option value="Pre-Trial">Pre-Trial Conference</option>
+                </select>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="date">Date</Label>
+                  <div className="border rounded-md p-3">
                     <Calendar
                       mode="single"
                       selected={date}
                       onSelect={setDate}
                       initialFocus
+                      disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                      className="w-full"
                     />
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="time">Time</Label>
+                  <Input 
+                    id="time" 
+                    type="time" 
+                    value={formData.time} 
+                    onChange={handleChange} 
+                  />
+                </div>
               </div>
+              
               <div className="space-y-2">
-                <Label htmlFor="time">Time</Label>
-                <Input id="time" type="time" defaultValue="09:00" />
+                <Label htmlFor="judge">Judge</Label>
+                <Input 
+                  id="judge" 
+                  placeholder="Judge name" 
+                  value={formData.judge}
+                  onChange={handleChange}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="mode">Hearing Mode</Label>
+                <select
+                  id="mode"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={formData.mode}
+                  onChange={handleChange}
+                >
+                  <option value="virtual">Virtual</option>
+                  <option value="in-person">In-Person</option>
+                </select>
+              </div>
+              
+              {formData.mode === "in-person" && (
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location/Courtroom</Label>
+                  <Input 
+                    id="location" 
+                    placeholder="e.g., Courtroom 304" 
+                    value={formData.location}
+                    onChange={handleChange}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes</Label>
+                <textarea
+                  id="notes"
+                  placeholder="Additional details about the hearing"
+                  className="flex h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={formData.notes}
+                  onChange={handleChange}
+                />
               </div>
             </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="judge">Judge</Label>
-              <Input id="judge" placeholder="Judge name" />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="mode">Hearing Mode</Label>
-              <select
-                id="mode"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="virtual">Virtual</option>
-                <option value="in-person">In-Person</option>
-              </select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="location">Location/Courtroom (for in-person)</Label>
-              <Input id="location" placeholder="e.g., Courtroom 304" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Scheduling...
-                </>
-              ) : (
-                "Schedule Hearing"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
+          </form>
+        </div>
+        <DialogFooter className="pt-2">
+          <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button type="submit" form="hearing-form" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Scheduling...
+              </>
+            ) : (
+              "Schedule Hearing"
+            )}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

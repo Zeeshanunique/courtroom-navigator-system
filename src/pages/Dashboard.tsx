@@ -14,11 +14,72 @@ import { useFetchCollection, useCollectionCount } from "@/hooks/useFirebaseQuery
 import { useState, useEffect } from "react";
 import { db } from "@/integrations/firebase/client";
 import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { uploadSampleData } from "@/utils/uploadMockData";
+import { useToast } from "@/hooks/use-toast";
+
+// Data initialization component
+const DataInitializer = ({ onInitialized }: { onInitialized: () => void }) => {
+  const [isInitializing, setIsInitializing] = useState(false);
+  const { toast } = useToast();
+  const { data: casesCount } = useCollectionCount("cases");
+  
+  useEffect(() => {
+    const initializeData = async () => {
+      // Only initialize data if we have no data
+      if (casesCount === 0 && !isInitializing) {
+        setIsInitializing(true);
+        try {
+          const result = await uploadSampleData();
+          if (result.success) {
+            toast({
+              title: "Data Initialized",
+              description: "Sample data has been loaded successfully.",
+              variant: "default",
+            });
+            onInitialized();
+          } else {
+            toast({
+              title: "Data Initialization Failed",
+              description: result.message,
+              variant: "destructive",
+            });
+          }
+        } catch (error) {
+          toast({
+            title: "Error",
+            description: "Failed to initialize sample data.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsInitializing(false);
+        }
+      } else if (casesCount > 0) {
+        // If we already have data, just call onInitialized
+        onInitialized();
+      }
+    };
+    
+    initializeData();
+  }, [casesCount, onInitialized, isInitializing, toast]);
+  
+  if (isInitializing) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p>Initializing data...</p>
+      </div>
+    );
+  }
+  
+  // Render nothing if not initializing (the parent will handle rendering)
+  return null;
+};
 
 export default function DashboardPage() {
   const role = useUserRole();
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const [dataInitialized, setDataInitialized] = useState(false);
   
   // States for statistics
   const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -33,7 +94,7 @@ export default function DashboardPage() {
     : getDemoNameByRole(role);
   
   // Get counts from Firebase
-  const { count: totalCaseCount, isLoading: isCasesLoading } = useCollectionCount("cases");
+  const { data: totalCaseCount, isLoading: isCasesLoading, refetch: refetchCaseCount } = useCollectionCount("cases");
   
   // Load statistics
   useEffect(() => {
@@ -90,10 +151,20 @@ export default function DashboardPage() {
       }
     };
     
-    if (!isCasesLoading && totalCaseCount !== null) {
+    if (dataInitialized && !isCasesLoading && totalCaseCount !== null) {
       fetchStatistics();
     }
-  }, [totalCaseCount, isCasesLoading, user]);
+  }, [totalCaseCount, isCasesLoading, user, dataInitialized]);
+  
+  // Handler for when data is initialized
+  const handleDataInitialized = () => {
+    setDataInitialized(true);
+    refetchCaseCount();
+  };
+  
+  if (!dataInitialized) {
+    return <DataInitializer onInitialized={handleDataInitialized} />;
+  }
   
   return (
     <DashboardLayout>
